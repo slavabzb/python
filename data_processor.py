@@ -1,59 +1,147 @@
 #!/usr/bin/python
 
-"""
-    @brief Reads istream, calculates averages and put them to ostream
-    @param istream input file
-    @param ostream output file
-"""
-def process_file(istream, ostream):
+def process_data(csvdata, year):
+    from csv import DictReader
+    import time
+    
+    reader = DictReader(csvdata)
+
     open_sum    = 0
     close_sum   = 0
     max_sum     = 0
     min_sum     = 0
-    size        = 0    
-    
-    with open(istream, "r") as src:
-        import csv
-        reader = csv.DictReader(src)
-        for irow in reader:
+    size        = 0
+            
+    for irow in reader:
+        for key in irow.keys():
+            newkey = str(key).decode("utf-8-sig").encode("utf-8")
+            irow[newkey] = irow.pop(key)
+        
+        date = time.strptime(irow["Date"], "%Y-%m-%d")
+        if str(date.tm_year) == year:
             open_sum    += float(irow["Open"])
             close_sum   += float(irow["Close"])
             max_sum     += float(irow["High"])
             min_sum     += float(irow["Low"])
             size        += 1
     
+    return open_sum / size, close_sum / size, max_sum / size, min_sum / size
+
+def process_file(istream, ostream, year):
     import json
-    json.dump({"open ave":  open_sum / size},   ostream)
-    json.dump({"close ave": close_sum / size},  ostream)
-    json.dump({"max ave":   max_sum / size},    ostream)
-    json.dump({"min ave":   min_sum / size},    ostream)
+    import csv
+    import time
+
+    values = {"open": 0, "close": 0, "max": 0, "min": 0}
+                    
+    with open(istream, "r") as src:
+        reader = csv.DictReader(src)
+
+        size = 0
+        
+        for irow in reader:
+            date = time.strptime(irow["Date"], "%Y-%m-%d")
+            if str(date.tm_year) == year:
+                values["open"] += float(irow["Open"])
+                values["close"] += float(irow["Close"])
+                values["max"] += float(irow["High"])
+                values["min"] += float(irow["Low"])
+                size += 1
+
+    if size != 0:
+        for (key, value) in values.items():
+            values[key] /= size
+
+    json.dump(values, ostream)
+
+def process_network(symbol, year, ostream):
+    import datetime
+    import time
+    import json
+    import csv
+    from urllib2 import urlopen
+    from urllib2 import quote
+    
+    start = datetime.date(int(year), 1, 1)
+    end = datetime.date(int(year), 12, 31)
+    url = "http://www.google.com/finance/historical?q={0}&startdate={1}&enddate={2}&output=csv"
+    url = url.format(symbol.upper(), quote(start.strftime('%b %d, %Y')), quote(end.strftime('%b %d, %Y')))
+    data = urlopen(url).readlines()
+        
+    values = {"open": 0, "close": 0, "max": 0, "min": 0}
+    size = 0
+    
+    reader = csv.DictReader(data)
+        
+    for irow in reader:
+        for key in irow.keys():
+            newkey = str(key).decode("utf-8-sig").encode("utf-8")
+            irow[newkey] = irow.pop(key)
+        
+        date = time.strptime(irow["Date"], "%d-%b-%y")
+        if str(date.tm_year) == year:
+            values["open"] += float(irow["Open"])
+            values["close"] += float(irow["Close"])
+            values["max"] += float(irow["High"])
+            values["min"] += float(irow["Low"])
+            size += 1
+
+    if size != 0:
+        for (key, value) in values.items():
+            values[key] /= size
+
+    json.dump(values, ostream)
 
 if __name__ == "__main__":
-    print("Data processor 0.0")
-    print("")
+    print("Data processor 0.1\n")
     
     import sys
+    import argparse
+    import logging
     
-    try:
-        istream = sys.argv[1]
-    except IndexError:
-        istream = raw_input("source file: ")
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--symbol", help="stock symbol")
+    argparser.add_argument("--file", help="file to process by program")
+    argparser.add_argument("--out", help="output file")
+    argparser.add_argument("--logfile", help="log file")
+    argparser.add_argument("--log", help="log level")
+    argparser.add_argument("--year", help="year")
+    args = argparser.parse_args()
     
-    try:
-        ostream = open(sys.argv[2], "w")
-    except IndexError:
-        print("redirecting to stdout")
-        ostream = sys.stdout
-
-    try:
-        print("processing {}".format(istream))
-        process_file(istream, ostream)
-        print("")
-        print("done")
-    except IOError:
-        print("can't open file '{}'".format(istream))
-    except:
-        print("bad thing happened")        
+    if args.log:
+        numeric_level = getattr(logging, args.log.upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError('Invalid log level: %s' % args.log)
         
-    ostream.close()
+        logging.basicConfig(filename=args.logfile, level=numeric_level)
+        
+    try:
+        if args.file:
+            istream = args.file
+            
+            if args.out:
+                ostream = open(args.out, "w")
+            else:
+                ostream = sys.stdout
+            
+            logging.info("processing {}".format(istream))
+            process_file(istream, ostream, args.year)
+        elif args.symbol:
+            if args.out:
+                ostream = open(args.out, "w")
+            else:
+                ostream = sys.stdout
+
+            logging.info("process network")
+            if args.year:            
+                process_network(args.symbol, args.year, ostream)
+            else:
+                logging.error("year is not specified")
+    
+    except IOError:
+        logging.error("can't open file")
+    except:
+        logging.error("bad thing happened")        
+        
+    ostream.close()    
 
