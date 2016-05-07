@@ -1,32 +1,5 @@
 #!/usr/bin/python
 
-def process_data(csvdata, year):
-    from csv import DictReader
-    import time
-    
-    reader = DictReader(csvdata)
-
-    open_sum    = 0
-    close_sum   = 0
-    max_sum     = 0
-    min_sum     = 0
-    size        = 0
-            
-    for irow in reader:
-        for key in irow.keys():
-            newkey = str(key).decode("utf-8-sig").encode("utf-8")
-            irow[newkey] = irow.pop(key)
-        
-        date = time.strptime(irow["Date"], "%Y-%m-%d")
-        if str(date.tm_year) == year:
-            open_sum    += float(irow["Open"])
-            close_sum   += float(irow["Close"])
-            max_sum     += float(irow["High"])
-            min_sum     += float(irow["Low"])
-            size        += 1
-    
-    return open_sum / size, close_sum / size, max_sum / size, min_sum / size
-
 def process_file(istream, ostream, year):
     import json
     import csv
